@@ -1,12 +1,46 @@
-# React + Vite
+# 🎯 Career Guidance Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An AI-powered career guidance platform designed to help learners navigate their path from **beginner to advanced levels** in various tech fields. Built with **React.js**, **Tailwind CSS**, and **Firebase**, this platform offers a seamless and engaging user experience.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Features
 
-## Expanding the ESLint configuration
+- ✅ **Pre-defined Courses**  
+  Curated learning paths designed for specific career goals in tech.
 
-If you are developing a production application, we recommend using TypeScript and enable type-aware lint rules. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 🧭 **Step-by-Step Roadmaps**  
+  Clear roadmaps from scratch — covering basics to advanced topics.
+
+- 🤖 **AI-Generated Interview Q&A**  
+  Smart interview questions and detailed answers powered by **Gamini AI** to help users get job-ready.
+
+- 🔐 **Secure Authentication**  
+  Integrated with **Firebase Authentication** for secure login/signup.
+
+---
+
+## 🛠️ Tech Stack
+
+| Tech        | Usage                            |
+|-------------|----------------------------------|
+| React.js    | Frontend UI                      |
+| Tailwind CSS| Styling & Responsive Design      |
+| Firebase    | Authentication & Backend Support |
+| Gamini AI   | Interview Q&A Generation         |
+
+---
+
+## 📸 Screenshots
+
+<!-- Add your screenshots here -->
+> 📷 *Coming Soon* or feel free to add UI snapshots once available
+
+---
+
+## 📌 Getting Started
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/your-repo-name.git
+cd your-repo-name
