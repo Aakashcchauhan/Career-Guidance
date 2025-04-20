@@ -6,7 +6,7 @@ import re
 import time
 
 # ----------------- CONFIG --------------------
-API_KEY = "AIzaSyAFVcGHtQs1YfEVgXZbxkPYUa-oqX-lRVA"  # Replace with your actual Gemini API key
+API_KEY = ""  # Replace with your actual Gemini API key
 DIFFICULTY_TIMES = {
     "basic": 60,
     "intermediate": 120,
