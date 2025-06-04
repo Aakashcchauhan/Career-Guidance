@@ -17,7 +17,7 @@ const { theme, toggleTheme } = useContext(ThemeContext);
   const [courseInput, setCourseInput] = useState("");
   const [availableCourses, setAvailableCourses] = useState([courseType]);
   
-  const GEMINI_API_KEY = "AIzaSyAFVcGHtQs1YfEVgXZbxkPYUa-oqX-lRVA"; 
+  const GEMINI_API_KEY = ""; 
   const MODEL_ID = "gemini-2.0-flash";
   const GENERATE_CONTENT_API = "generateContent";
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
