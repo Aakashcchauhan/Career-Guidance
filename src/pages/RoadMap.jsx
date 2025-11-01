@@ -1,34 +1,94 @@
-import React, { useState, useEffect,useContext } from "react";
+import React, { useState, useEffect, useContext } from "react";
+import { useParams } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-export default function CourseRoadmap({course}) {
+import { ProgressContext } from "../context/ProgressContext";
 
-
-const { theme, toggleTheme } = useContext(ThemeContext);
+export default function CourseRoadmap() {
+  const { courseName } = useParams();
+  const { theme, toggleTheme } = useContext(ThemeContext);
+  const { trackModuleView, trackTopicView } = useContext(ProgressContext);
   const darkMode = theme === "dark";
 
   const [selectedModule, setSelectedModule] = useState(null);
-  const [courseType, setCourseType] = useState(course);
+  const [courseType, setCourseType] = useState(courseName || "");
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [aiEnhancedContent, setAiEnhancedContent] = useState(null);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [error, setError] = useState(null);
-  const [courses, setCourses] = useState({});
+  const [youtubeVideos, setYoutubeVideos] = useState([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [courses, setCourses] = useState(() => {
+    // Load courses from localStorage on mount
+    const savedCourses = localStorage.getItem('roadmapCourses');
+    return savedCourses ? JSON.parse(savedCourses) : {};
+  });
   const [isLoadingCourse, setIsLoadingCourse] = useState(false);
   const [courseInput, setCourseInput] = useState("");
-  const [availableCourses, setAvailableCourses] = useState([courseType]);
+  const [availableCourses, setAvailableCourses] = useState(() => {
+    // Load available courses from localStorage on mount
+    const savedAvailableCourses = localStorage.getItem('availableCourses');
+    return savedAvailableCourses ? JSON.parse(savedAvailableCourses) : [];
+  });
   
-  const GEMINI_API_KEY = "AIzaSyAFVcGHtQs1YfEVgXZbxkPYUa-oqX-lRVA"; 
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; 
   const MODEL_ID = "gemini-2.0-flash";
   const GENERATE_CONTENT_API = "generateContent";
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+  
+  // YouTube API configuration
+  const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+  const YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/search";
 
+  // Clean up duplicate courses on mount (case-insensitive)
   useEffect(() => {
-    setCourseType(course);
-  }, [course]);
+    const uniqueCourses = [];
+    const seenLowercase = new Set();
+    
+    availableCourses.forEach(course => {
+      const lowercase = course.toLowerCase();
+      if (!seenLowercase.has(lowercase)) {
+        seenLowercase.add(lowercase);
+        uniqueCourses.push(course);
+      }
+    });
+    
+    if (uniqueCourses.length !== availableCourses.length) {
+      setAvailableCourses(uniqueCourses);
+    }
+  }, []); // Run only once on mount
 
-  // Load initial course data
+  // Save courses to localStorage whenever they change
   useEffect(() => {
-    if (!courses[courseType]) {
+    if (Object.keys(courses).length > 0) {
+      localStorage.setItem('roadmapCourses', JSON.stringify(courses));
+    }
+  }, [courses]);
+
+  // Save available courses to localStorage whenever they change
+  useEffect(() => {
+    if (availableCourses.length > 0) {
+      localStorage.setItem('availableCourses', JSON.stringify(availableCourses));
+    }
+  }, [availableCourses]);
+
+  // Update courseType when URL parameter changes
+  useEffect(() => {
+    if (courseName && courseName.trim()) {
+      const courseKey = courseName.toLowerCase().replace(/\s+/g, "");
+      setCourseType(courseKey);
+      // Only add to availableCourses if not already present
+      setAvailableCourses((prev) => {
+        if (!prev.includes(courseKey)) {
+          return [...prev, courseKey];
+        }
+        return prev;
+      });
+    }
+  }, [courseName]);
+
+  // Load initial course data only if courseName is provided from URL
+  useEffect(() => {
+    if (courseType && !courses[courseType]) {
       generateCourseData(courseType);
     }
     // Only depend on courseType to avoid infinite loop
@@ -38,11 +98,32 @@ const { theme, toggleTheme } = useContext(ThemeContext);
   const handleCourseSubmit = async (e) => {
     e.preventDefault(); // Prevent form reload
     if (courseInput.trim()) {
-      const courseKey = courseInput.toLowerCase().replace(/\s+/g, "");
-      if (!availableCourses.includes(courseKey)) {
+      // Normalize: lowercase and remove extra spaces, keep single spaces
+      const normalizedInput = courseInput.trim().toLowerCase();
+      const courseKey = normalizedInput.replace(/\s+/g, "");
+      
+      // Check if course already exists (case-insensitive)
+      const alreadyExists = availableCourses.some(
+        course => course.toLowerCase() === courseKey.toLowerCase()
+      );
+      
+      if (!alreadyExists) {
         await generateCourseData(courseKey);
-        setAvailableCourses((prev) => [...prev, courseKey]);
+        setAvailableCourses((prev) => {
+          // Double-check before adding to prevent race conditions
+          const exists = prev.some(
+            course => course.toLowerCase() === courseKey.toLowerCase()
+          );
+          if (!exists) {
+            return [...prev, courseKey];
+          }
+          return prev;
+        });
+      } else if (!courses[courseKey]) {
+        // Course tab exists but data doesn't - regenerate
+        await generateCourseData(courseKey);
       }
+      
       setCourseType(courseKey);
       setCourseInput("");
     }
@@ -74,8 +155,14 @@ const { theme, toggleTheme } = useContext(ThemeContext);
     setIsLoadingCourse(true);
     setError(null);
 
+    // Create a properly formatted display name (capitalize first letter of each word)
+    const displayName = courseName
+      .split(/(?=[A-Z])|[\s-]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
     try {
-      const prompt = `Generate a comprehensive, structured roadmap for a course on ${courseName}. 
+      const prompt = `Generate a comprehensive, structured roadmap for a course on ${displayName}. 
 The output should be in JSON format matching this structure:
 {
   "${courseName}": {
@@ -152,15 +239,71 @@ Return only the JSON with no explanations before or after.`;
     }
   };
 
+  // Fetch YouTube videos for a given search query
+  const fetchYouTubeVideos = async (searchQuery) => {
+    setIsLoadingVideos(true);
+    console.log("Fetching YouTube videos for:", searchQuery);
+    console.log("YouTube API Key:", YOUTUBE_API_KEY ? "Present" : "Missing");
+    
+    try {
+      const url = `${YOUTUBE_API_URL}?part=snippet&maxResults=6&q=${encodeURIComponent(
+        searchQuery + " tutorial"
+      )}&type=video&key=${YOUTUBE_API_KEY}`;
+      
+      console.log("API URL:", url);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log("YouTube API Response:", data);
+      
+      if (data.error) {
+        console.error("YouTube API Error:", data.error);
+        setYoutubeVideos([]);
+      } else if (data.items) {
+        console.log("Found videos:", data.items.length);
+        setYoutubeVideos(data.items);
+      } else {
+        console.log("No items in response");
+        setYoutubeVideos([]);
+      }
+    } catch (error) {
+      console.error("Error fetching YouTube videos:", error);
+      setYoutubeVideos([]);
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  };
+
   // Handle module selection
   const handleModuleSelect = (module) => {
     setSelectedModule(module);
     setSelectedTopic(null); // Reset topic selection when a new module is selected
+    
+    // Fetch YouTube videos for this module
+    const searchQuery = `${courses[courseType]?.title || courseType} ${module.title}`;
+    fetchYouTubeVideos(searchQuery);
+    
+    // Track module view in progress
+    if (courseType) {
+      trackModuleView(courseType, module.id, module.title);
+    }
   };
 
   // Handle topic selection
   const handleTopicSelect = (topic) => {
     setSelectedTopic(topic);
+    
+    // Fetch YouTube videos for this specific topic
+    if (selectedModule) {
+      const searchQuery = `${courses[courseType]?.title || courseType} ${selectedModule.title} ${topic}`;
+      fetchYouTubeVideos(searchQuery);
+    }
+    
+    // Track topic view in progress
+    if (courseType && selectedModule) {
+      trackTopicView(courseType, selectedModule.id, selectedModule.title, topic);
+    }
   };
 
   // Fetch AI-enhanced content when module or topic changes
@@ -284,13 +427,13 @@ Format your response in markdown using clear headings and bullet points for read
   const getDifficultyGradient = (difficulty) => {
     switch (difficulty) {
       case "Beginner":
-        return "from-emerald-400 to-emerald-600";
+        return { from: "#34d399", to: "#059669" }; // emerald-400 to emerald-600
       case "Intermediate":
-        return "from-sky-400 to-sky-600";
+        return { from: "#38bdf8", to: "#0284c7" }; // sky-400 to sky-600
       case "Advanced":
-        return "from-indigo-400 to-indigo-700";
+        return { from: "#818cf8", to: "#4338ca" }; // indigo-400 to indigo-700
       default:
-        return "from-gray-400 to-gray-600";
+        return { from: "#9ca3af", to: "#4b5563" }; // gray-400 to gray-600
     }
   };
 
@@ -434,8 +577,8 @@ Format your response in markdown using clear headings and bullet points for read
                     <>
                       <defs>
                         <linearGradient id={`gradient-${module.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" className={`${nodeBgGradient.split(" ")[0]}`} />
-                          <stop offset="100%" className={`${nodeBgGradient.split(" ")[1]}`} />
+                          <stop offset="0%" stopColor={nodeBgGradient.from} />
+                          <stop offset="100%" stopColor={nodeBgGradient.to} />
                         </linearGradient>
                         <filter id={`shadow-${module.id}`} x="-20%" y="-20%" width="140%" height="140%">
                           <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#00000033" />
@@ -449,11 +592,9 @@ Format your response in markdown using clear headings and bullet points for read
                         rx="10"
                         fill={`url(#gradient-${module.id})`}
                         filter={`url(#shadow-${module.id})`}
-                        className={`transition-all duration-300 ease-in-out ${
-                          selectedModule?.id === module.id
-                            ? "stroke-amber-400 stroke-3"
-                            : "stroke-transparent"
-                        }`}
+                        stroke={selectedModule?.id === module.id ? "#fbbf24" : "transparent"}
+                        strokeWidth={selectedModule?.id === module.id ? "3" : "0"}
+                        className="transition-all duration-300 ease-in-out"
                       />
                       <text
                         x={pos.x + 85}
@@ -487,77 +628,128 @@ Format your response in markdown using clear headings and bullet points for read
   const convertMarkdownToHTML = (markdown) => {
     if (!markdown) return "";
 
-    // Convert headers
-    let html = markdown
+    let html = markdown;
+
+    // Convert headers with modern styling
+    html = html
+      .replace(
+        /^#### (.*)$/gm,
+        '<h4 class="text-base font-semibold mt-4 mb-2 text-gray-800 dark:text-gray-100">$1</h4>'
+      )
       .replace(
         /^### (.*)$/gm,
-        '<h3 class="text-lg font-semibold mt-4 mb-2 text-black dark:text-white">$1</h3>'
+        '<h3 class="text-lg font-bold mt-5 mb-3 text-gray-900 dark:text-white">$1</h3>'
       )
       .replace(
         /^## (.*)$/gm, 
-        '<h2 class="text-xl font-bold mt-5 mb-3 text-black dark:text-white pb-1 border-b border-indigo-200 dark:border-indigo-800">$1</h2>'
+        '<h2 class="text-xl font-bold mt-6 mb-4 pb-2 text-gray-900 dark:text-white border-b-2 border-indigo-500/30">$1</h2>'
+      )
+      .replace(
+        /^# (.*)$/gm,
+        '<h1 class="text-2xl font-bold mt-6 mb-4 text-gray-900 dark:text-white">$1</h1>'
       );
 
-    // Convert bold and italic
+    // Convert bold and italic with better contrast
     html = html
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-gray-100">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em class="text-gray-700 dark:text-gray-300 italic">$1</em>');
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-indigo-600 dark:text-indigo-400 italic">$1</strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>')
+      .replace(/__(.+?)__/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
+      .replace(/_(.+?)_/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>');
 
-    // Convert ordered lists
-    html = html.replace(/(^|\n)(\d+\..*(\n\d+\..*)*)/g, function (match) {
-      const items = match
-        .trim()
-        .split("\n")
-        .map((line) => line.replace(/^\d+\.\s*/, "").trim())
-        .map((item) => `<li class="mb-1">${ item }</li>`)
-        .join("");
-      return `<ol class="list-decimal mb-4 ml-5 space-y-1">${ items }</ol>`;
+    // Convert code blocks
+    html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, lang, code) {
+      return `<pre class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 mb-4 overflow-x-auto"><code class="text-sm text-gray-800 dark:text-gray-200">${code.trim()}</code></pre>`;
     });
 
-    // Convert unordered lists
-    html = html.replace(/(^|\n)(-\s.*(\n-\s.*)*)/g, function (match) {
+    // Convert inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-sm font-mono">$1</code>');
+
+    // Convert ordered lists with better spacing
+    html = html.replace(/(?:^|\n)(\d+\..+(?:\n(?!\n)\d+\..+)*)/gm, function (match) {
       const items = match
         .trim()
-        .split("\n")
-        .map((line) => line.replace(/^- /, "").trim())
-        .map((item) => `<li class="mb-1">${ item }</li>`)
+        .split(/\n(?=\d+\.)/)
+        .map((line) => {
+          const content = line.replace(/^\d+\.\s*/, "").trim();
+          return `<li class="mb-3 pl-2 text-gray-700 dark:text-gray-300">${content}</li>`;
+        })
         .join("");
-      return `<ul class="list-disc mb-4 ml-5 space-y-1">${ items }</ul>`;
+      return `<ol class="list-decimal list-outside mb-6 ml-6 space-y-2 text-gray-700 dark:text-gray-300">${items}</ol>`;
     });
+
+    // Convert unordered lists with better spacing
+    html = html.replace(/(?:^|\n)([-*]\s.+(?:\n(?!\n)[-*]\s.+)*)/gm, function (match) {
+      const items = match
+        .trim()
+        .split(/\n(?=[-*]\s)/)
+        .map((line) => {
+          const content = line.replace(/^[-*]\s/, "").trim();
+          return `<li class="mb-3 pl-2 text-gray-700 dark:text-gray-300">${content}</li>`;
+        })
+        .join("");
+      return `<ul class="list-disc list-outside mb-6 ml-6 space-y-2 text-gray-700 dark:text-gray-300">${items}</ul>`;
+    });
+
+    // Convert blockquotes
+    html = html.replace(/^>\s*(.+)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-4 py-2 mb-4 italic text-gray-700 dark:text-gray-300 bg-indigo-50/50 dark:bg-indigo-900/20">$1</blockquote>');
+
+    // Convert horizontal rules
+    html = html.replace(/^---$/gm, '<hr class="my-6 border-gray-300 dark:border-gray-700" />');
+
+    // Convert links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium" target="_blank" rel="noopener noreferrer">$1</a>');
 
     // Convert paragraphs (lines not already in a block element)
     html = html.replace(
-      /^(?!<h|<ul|<ol|<li|<p|<strong|<em)(.+)$/gm,
-      '<p class="mb-3 text-gray-700 dark:text-gray-300">$1</p>'
+      /^(?!<[h|ul|ol|li|p|blockquote|pre|hr])(.+)$/gm,
+      '<p class="mb-4 leading-relaxed text-gray-700 dark:text-gray-300">$1</p>'
     );
 
     return html;
   };
 
   return (
-    <div className={`flex flex-col min-h-screen ${darkMode ? "bg-slate-900 text-slate-200" : "bg-slate-50 text-slate-800 " }`}>
-      {/* Header Section with Gradient */}
-      <div className="bg- shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
-          <form onSubmit={handleCourseSubmit} className="mb-5">
-            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-              <div className="relative flex-grow">
+    <div className={`min-h-screen pb-20 ${darkMode ? "bg-slate-900" : "bg-gray-50"}`}>
+      {/* Modern Header Section */}
+      <div className={`${darkMode ? "bg-slate-800" : "bg-white"} shadow-lg mb-6`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Title */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold mb-2">
+              <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                Course Roadmap
+              </span>
+            </h1>
+            <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+              Generate or explore comprehensive learning paths
+            </p>
+          </div>
+
+          {/* Search Form */}
+          <form onSubmit={handleCourseSubmit} className="mb-6">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
                 <input
-                  className="w-full border-0 rounded-lg h-12 pl-4 pr-10 shadow-md outline-none focus:ring-2 focus:ring-indigo-300 transition-all "
+                  className={`w-full h-12 pl-4 pr-10 rounded-xl border-2 transition-all ${
+                    darkMode
+                      ? "bg-slate-700 border-slate-600 text-white placeholder-gray-400 focus:border-indigo-500"
+                      : "bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-500"
+                  } focus:ring-2 focus:ring-indigo-500/20 outline-none`}
                   type="text"
-                  placeholder="Enter a course name (e.g., Machine Learning, JavaScript)"
+                  placeholder="Enter course name (e.g., Machine Learning, JavaScript)"
                   value={courseInput}
                   onChange={(e) => setCourseInput(e.target.value)}
-                  aria-label="Course name"
                 />
                 {courseInput && (
                   <button
-                    type="button" 
-                    className="absolute right-3 top-4 "
+                    type="button"
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-colors ${
+                      darkMode ? "hover:bg-slate-600" : "hover:bg-gray-100"
+                    }`}
                     onClick={() => setCourseInput("")}
-                    aria-label="Clear input"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                   </button>
@@ -565,241 +757,391 @@ Format your response in markdown using clear headings and bullet points for read
               </div>
               <button
                 type="submit"
-                className="px-6 py-3 bg-white text-indigo-600 font-medium rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-none dark:bg-indigo-600 dark:text-white dark:hover:bg-indigo-700 dark:focus:ring-offset-slate-900"
                 disabled={isLoadingCourse}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
               >
                 {isLoadingCourse ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
                     Generating...
                   </span>
                 ) : (
-                  <>
-                    <span className="flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Generate Course
-                    </span>
-                  </>
+                  <span className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Generate Course
+                  </span>
                 )}
               </button>
             </div>
           </form>
 
+          {/* Error Message */}
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg text-red-600 dark:text-red-600 text-sm mb-4 shadow-sm border border-red-200 dark:border-red-800 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+            <div className={`p-4 rounded-xl mb-4 flex items-start gap-3 ${
+              darkMode ? "bg-red-500/10 border border-red-500/20" : "bg-red-50 border border-red-200"
+            }`}>
+              <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              {error}
+              <span className="text-red-600 dark:text-red-400 text-sm">{error}</span>
             </div>
           )}
 
+          {/* Course Info Card */}
           {courses[courseType] && (
-            <div className=" backdrop-blur-sm rounded-lg p-4 shadow-lg">
-              <h1 className="text-2xl font-bold ">
+            <div className={`p-6 rounded-xl shadow-lg ${darkMode ? "bg-slate-700" : "bg-gradient-to-r from-indigo-50 to-purple-50"}`}>
+              <h2 className={`text-2xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>
                 {courses[courseType].title}
-              </h1>
-              <p className="mt-1 italic">
+              </h2>
+              <p className={`${darkMode ? "text-gray-300" : "text-gray-700"}`}>
                 {courses[courseType].description}
               </p>
             </div>
           )}
 
-          <div className="mt-5 flex space-x-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-indigo-500 scrollbar-track-transparent">
-            {availableCourses.map((course) => (
-              <button
-                key={course}
-                onClick={() => setCourseType(course)}
-                className={`px-4 py-2 rounded-md transition-all duration-300 flex-shrink-0 font-medium ${
-                  courseType === course
-                    ? "shadow-md transform -translate-y-0.5"
-                    : " hover:bg-white/80 dark:bg-slate-700 dark:hover:bg-slate-700/80 text-slate-700 dark:text-white"
-                }`}
-              >
-                {courses[course]?.title || course}
-              </button>
-            ))}
+          {/* Available Courses Tabs */}
+          {availableCourses.length > 0 && (
+            <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
+              {availableCourses.map((course) => {
+                // Format course name for display (capitalize first letter of each word)
+                const displayName = courses[course]?.title || 
+                  course.split(/(?=[A-Z])|[\s-]+/)
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+                
+                return (
+                  <button
+                    key={course}
+                    onClick={() => setCourseType(course)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${
+                      courseType === course
+                        ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+                        : darkMode
+                        ? "bg-slate-700 text-gray-300 hover:bg-slate-600"
+                        : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+                    }`}
+                  >
+                    {displayName}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+          {/* Roadmap Visualization - Left Side (wider) */}
+          <div className="xl:col-span-3">
+            <div className={`rounded-2xl shadow-lg p-6 ${darkMode ? "bg-slate-800" : "bg-white"}`}>
+              {/* Header */}
+              <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h2 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>
+                    Learning Path
+                  </h2>
+                  <p className={`text-sm mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                    Click on modules to explore topics
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
+                    <span className={`text-xs ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Beginner</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-sky-400"></span>
+                    <span className={`text-xs ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Intermediate</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
+                    <span className={`text-xs ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Advanced</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              {isLoadingCourse ? (
+                <div className="flex justify-center items-center h-96">
+                  <div className="flex flex-col items-center">
+                    <svg className="animate-spin h-12 w-12 text-indigo-600 mb-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                      Generating course roadmap...
+                    </p>
+                  </div>
+                </div>
+              ) : courses[courseType] ? (
+                <div className="overflow-x-auto">
+                  {renderRoadmap()}
+                </div>
+              ) : (
+                <div className="text-center py-20">
+                  <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                    Enter a course name above to generate a learning roadmap
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Module Details Sidebar - Right Side */}
+          <div className="xl:col-span-1">
+            <div className={`rounded-2xl shadow-lg p-6 sticky top-6 ${darkMode ? "bg-slate-800" : "bg-white"}`}>
+              <h2 className={`text-xl font-bold mb-4 ${darkMode ? "text-white" : "text-gray-900"}`}>
+                Module Details
+              </h2>
+
+              {selectedModule ? (
+                <div className="space-y-4">
+                  {/* Module Title & Description */}
+                  <div>
+                    <h3 className={`text-lg font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>
+                      {selectedModule.title}
+                    </h3>
+                    <p className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                      {selectedModule.description}
+                    </p>
+                  </div>
+
+                  {/* Difficulty & Duration */}
+                  <div className="flex items-center gap-3">
+                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold text-white ${getNodeColor(selectedModule.difficulty)}`}>
+                      {selectedModule.difficulty}
+                    </span>
+                    <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                      {selectedModule.duration}
+                    </span>
+                  </div>
+
+                  {/* Topics */}
+                  <div>
+                    <h4 className={`font-semibold mb-3 ${darkMode ? "text-white" : "text-gray-900"}`}>
+                      Topics Covered:
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModule.topics.map((topic, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleTopicSelect(topic)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedTopic === topic
+                              ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+                              : darkMode
+                              ? "bg-slate-700 text-gray-300 hover:bg-slate-600"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {topic}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Prerequisites */}
+                  {selectedModule.prerequisites?.length > 0 && (
+                    <div>
+                      <h4 className={`font-semibold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>
+                        Prerequisites:
+                      </h4>
+                      <ul className={`space-y-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                        {selectedModule.prerequisites.map((prereqId) => {
+                          const prereq = courses[courseType]?.modules.find((m) => m.id === prereqId);
+                          return prereq && <li key={prereqId}>{prereq.title}</li>;
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Back Button */}
+                  {selectedTopic && (
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <button
+                        onClick={() => setSelectedTopic(null)}
+                        className={`text-sm font-medium transition-colors ${
+                          darkMode ? "text-indigo-400 hover:text-indigo-300" : "text-indigo-600 hover:text-indigo-700"
+                        }`}
+                      >
+                        ← Back to module overview
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className={`text-sm text-center py-8 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Select a module from the roadmap to view details
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex flex-col md:flex-row font-sans ">
-  <div className="w-full md:w-3/4 p-4 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 overflow-x-auto">
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2 sm:mb-0">
-          Learning Path Visualization
-        </h2>
-        <div className="flex items-center space-x-4">
-          <span className="flex items-center text-sm text-gray-700 dark:text-gray-300">
-            <span className="w-3 h-3 rounded-full bg-green-400 inline-block mr-2"></span>
-            Beginner
-          </span>
-          <span className="flex items-center text-sm text-gray-700 dark:text-gray-300">
-            <span className="w-3 h-3 rounded-full bg-blue-400 inline-block mr-2"></span>
-            Intermediate
-          </span>
-          <span className="flex items-center text-sm text-gray-700 dark:text-gray-300">
-            <span className="w-3 h-3 rounded-full bg-purple-500 inline-block mr-2"></span>
-            Advanced
-          </span>
-        </div>
-      </div>
+        {/* YouTube Videos Section */}
+        {selectedModule && (
+          <div className={`rounded-2xl shadow-lg p-6 mt-6 ${darkMode ? "bg-slate-800" : "bg-white"}`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-2xl font-bold flex items-center ${darkMode ? "text-white" : "text-gray-900"}`}>
+                <svg className="w-6 h-6 mr-2 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+                Related Video Tutorials
+              </h2>
+              {selectedTopic && (
+                <span className={`text-sm px-3 py-1 rounded-lg ${darkMode ? "bg-slate-700 text-gray-300" : "bg-gray-100 text-gray-700"}`}>
+                  {selectedTopic}
+                </span>
+              )}
+            </div>
 
-      {isLoadingCourse ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="flex flex-col items-center">
-            <svg className="animate-spin h-8 w-8 text-blue-500 mb-3" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            {isLoadingVideos ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className={`w-full h-48 rounded-lg mb-2 ${darkMode ? "bg-slate-700" : "bg-gray-200"}`}></div>
+                    <div className={`h-4 rounded w-3/4 mb-2 ${darkMode ? "bg-slate-700" : "bg-gray-200"}`}></div>
+                    <div className={`h-3 rounded w-1/2 ${darkMode ? "bg-slate-700" : "bg-gray-200"}`}></div>
+                  </div>
+                ))}
+              </div>
+            ) : youtubeVideos.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {youtubeVideos.map((video) => (
+                  <a
+                    key={video.id.videoId}
+                    href={`https://www.youtube.com/watch?v=${video.id.videoId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 ${
+                      darkMode ? "bg-slate-700 hover:bg-slate-600" : "bg-white hover:shadow-xl border border-gray-200"
+                    }`}
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative overflow-hidden">
+                      <img
+                        src={video.snippet.thumbnails.medium.url}
+                        alt={video.snippet.title}
+                        className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="bg-red-600 rounded-full p-4">
+                          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Video Info */}
+                    <div className="p-4">
+                      <h3 className={`font-semibold text-sm mb-2 line-clamp-2 group-hover:text-indigo-600 transition-colors ${
+                        darkMode ? "text-white" : "text-gray-900"
+                      }`}>
+                        {video.snippet.title}
+                      </h3>
+                      <p className={`text-xs mb-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        {video.snippet.channelTitle}
+                      </p>
+                      <p className={`text-xs line-clamp-2 ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
+                        {video.snippet.description}
+                      </p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  No videos found. Try selecting a different module or topic.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI-Enhanced Content Section */}
+        <div className={`rounded-2xl shadow-lg p-6 mt-6 ${darkMode ? "bg-slate-800" : "bg-white"}`}>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className={`text-lg font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>
+              {selectedTopic ? `${selectedTopic} - AI Insights` : "AI-Enhanced Content"}
+              <span className={`ml-2 text-xs font-normal ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                powered by Gemini 2.0
+              </span>
+            </h3>
+            {isLoadingAI && (
+              <div className="flex items-center gap-2">
+                <svg className="animate-spin h-5 w-5 text-indigo-600" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Loading insights...
+                </span>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className={`p-4 rounded-lg mb-4 ${darkMode ? "bg-red-900/30 text-red-400" : "bg-red-100 text-red-700"}`}>
+              {error}
+            </div>
+          )}
+
+          {isLoadingAI ? (
+            <div className="space-y-4 animate-pulse">
+              <div className={`h-6 rounded-lg ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-3/4`}></div>
+              <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-full`}></div>
+              <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-5/6`}></div>
+              <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-4/5`}></div>
+              <div className={`h-6 rounded-lg ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-2/3 mt-6`}></div>
+              <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-full`}></div>
+              <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-11/12`}></div>
+            </div>
+          ) : aiEnhancedContent ? (
+            <div className={`prose prose-sm md:prose-base max-w-none ${darkMode ? "prose-invert" : ""}`}>
+              <div
+                className="markdown-content"
+                dangerouslySetInnerHTML={{
+                  __html: convertMarkdownToHTML(aiEnhancedContent),
+                }}
               />
-            </svg>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Generating course roadmap...</p>
-          </div>
-        </div>
-      ) : courses[courseType] ? (
-        renderRoadmap()
-      ) : (
-        <div className="text-center py-10 text-gray-500 dark:text-gray-400">
-          Enter a course name to generate a roadmap
-        </div>
-      )}
-
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-6">
-        Click on any module to view details
-      </p>
-    </div>
-  </div>
-
-  <div className="w-full md:w-1/4 p-4">
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 h-full overflow-y-auto max-h-screen">
-      <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Module Details</h2>
-
-      {selectedModule ? (
-        <div>
-          <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-2">{selectedModule.title}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{selectedModule.description}</p>
-
-          <div className="mb-4 flex items-center text-sm">
-            <span
-              className={`inline-block px-2 py-1 rounded-full text-white text-xs font-medium ${getNodeColor(
-                selectedModule.difficulty
-              )}`}
-            >
-              {selectedModule.difficulty}
-            </span>
-            <span className="ml-3 text-gray-500 dark:text-gray-400">{selectedModule.duration}</span>
-          </div>
-
-          <div className="mb-4">
-            <h4 className="font-medium text-gray-800 dark:text-white mb-2">Topics Covered:</h4>
-            <div className="flex flex-wrap gap-2">
-              {selectedModule.topics.map((topic, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleTopicSelect(topic)}
-                  className={`px-3 py-1 rounded-full text-sm transition-all duration-200 ${
-                    selectedTopic === topic
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700"
-                  }`}
-                >
-                  {topic}
-                </button>
-              ))}
             </div>
-          </div>
-
-          {selectedModule.prerequisites?.length > 0 && (
-            <div className="mb-4">
-              <h4 className="font-medium text-gray-800 dark:text-white mb-2">Prerequisites:</h4>
-              <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-300">
-                {selectedModule.prerequisites.map((prereqId) => {
-                  const prereq = courses[courseType]?.modules.find((m) => m.id === prereqId);
-                  return prereq && <li key={prereqId}>{prereq.title}</li>;
-                })}
-              </ul>
-            </div>
-          )}
-
-          {selectedTopic && (
-            <div className="mt-4">
-              <button
-                onClick={() => setSelectedTopic(null)}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                « Back to module overview
-              </button>
+          ) : (
+            <div className="text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <p className={`text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                {selectedTopic ? "AI Insights Ready" : "No Content Selected"}
+              </p>
+              <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                {selectedTopic
+                  ? `Click on a topic to view AI insights about ${selectedTopic}`
+                  : "Select a module and topic to view AI-enhanced content"}
+              </p>
             </div>
           )}
         </div>
-      ) : (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Select a module from the roadmap to view details
-        </p>
-      )}
-    </div>
-  </div>
-</div>
-
-<div className="mt-6 border-t pt-6 dark:border-gray-700 px-6">
-  <div className="flex justify-between items-center mb-4">
-    <h3 className="text-lg font-semibold">
-      {selectedTopic ? `${selectedTopic} - AI Insights` : "AI-Enhanced Content"}
-      <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-        powered by Gemini 2.0
-      </span>
-    </h3>
-    {isLoadingAI && (
-      <div className="flex items-center">
-        <svg className="animate-spin h-5 w-5 mr-2 " viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
-        <span className="text-sm text-gray-500 dark:text-gray-400">Loading insights...</span>
       </div>
-    )}
-  </div>
-
-  {error && (
-    <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded text-red-700 dark:text-red-700 text-sm mb-4">
-      {error}
     </div>
-  )}
-
-  {isLoadingAI ? (
-    <div className="space-y-3 animate-pulse">
-      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
-    </div>
-  ) : aiEnhancedContent ? (
-    <div className="prose prose-sm dark:prose-invert text-black max-w-none">
-      <div
-        dangerouslySetInnerHTML={{
-          __html: convertMarkdownToHTML(aiEnhancedContent),
-        }}
-      />
-    </div>
-  ) : (
-    <p className="text-sm text-gray-500 dark:text-gray-400">
-      {selectedTopic
-        ? `Click on a topic to view AI insights about ${selectedTopic}`
-        : "Select a module to view AI-enhanced content"}
-    </p>
-  )}
-</div>
-</div>
-  ); } 
+  );
+} 

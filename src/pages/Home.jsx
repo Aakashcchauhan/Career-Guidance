@@ -1,5 +1,4 @@
-import React, { useState, useContext } from "react";
-import CourseRoadmap from "./RoadMap";
+import React, { useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FaJs, FaPython, FaJava, FaCuttlefish, FaRust, FaSwift, FaReact, FaNodeJs, FaMobileAlt,
@@ -14,7 +13,6 @@ import { ThemeContext } from "../context/ThemeContext";
 
 export default function CourseList() {
   const navigate = useNavigate();
-  const [selectedCourse, setSelectedCourse] = useState(null);
   const { theme } = useContext(ThemeContext);
   const darkMode = theme === "dark";
 
@@ -62,38 +60,69 @@ export default function CourseList() {
   };
 
   const handleCourseClick = (courseName) => {
-    setSelectedCourse(courseName);
-    navigate(`/CourseRoadmap`);
+    navigate(`/CourseRoadmap/${courseName}`);
   };
 
   return (
-    <div className={`p-6 max-w-6xl mx-auto ${darkMode ? "text-white" : "text-black"}`}>
-      <h1 className="text-4xl font-bold mb-10 text-center">Computer Science Courses</h1>
-      <div>
-        {Object.entries(courseData).map(([category, courses]) => (
-          <div key={category} className="mb-16">
-            <h2 className="text-2xl font-semibold">{category}</h2>
-            <hr className="my-4 border-t border-gray-300" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {courses.map((course, index) => (
-                <div
-                  key={index}
-                  className={`p-4 rounded-2xl shadow-md hover:shadow-xl transition duration-300 border border-gray-200 cursor-pointer flex items-center gap-3 bg-gradient-to-r ${course.gradient}`}
-                  onClick={() => handleCourseClick(course.name)}
-                >
-                  <span className="text-white text-2xl">{course.icon}</span>
-                  <p className="text-white font-medium text-lg">
-                    {course.name.replace(/([A-Z])/g, " $1").trim()}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+    <div className={`min-h-screen pb-20 ${darkMode ? "bg-slate-900" : "bg-gray-50"}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <div className={`text-center mb-12 p-8 rounded-2xl ${darkMode ? "bg-slate-800" : "bg-white"} shadow-lg`}>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Explore Hot Topics
+            </span>
+          </h1>
+          <p className={`text-lg ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+            Choose a course and start your learning journey today
+          </p>
+        </div>
 
-      {/* If you still want to render something in-page */}
-      {selectedCourse && <CourseRoadmap course={selectedCourse} />}
+        {/* Course Categories */}
+        <div className="space-y-12">
+          {Object.entries(courseData).map(([category, courses]) => (
+            <div key={category}>
+              <div className="mb-6">
+                <h2 className={`text-2xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>
+                  {category}
+                </h2>
+                <div className={`h-1 w-20 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600`}></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {courses.map((course, index) => (
+                  <div
+                    key={index}
+                    className={`group relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer ${
+                      darkMode ? "bg-slate-800" : "bg-white"
+                    }`}
+                    onClick={() => handleCourseClick(course.name)}
+                  >
+                    {/* Gradient Overlay */}
+                    <div className={`absolute inset-0 bg-gradient-to-r ${course.gradient} opacity-10 group-hover:opacity-20 transition-opacity`}></div>
+                    
+                    {/* Content */}
+                    <div className="relative p-6">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-4 rounded-xl bg-gradient-to-r ${course.gradient} text-white shadow-lg`}>
+                          <span className="text-3xl">{course.icon}</span>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className={`font-bold text-lg leading-tight ${darkMode ? "text-white" : "text-gray-900"}`}>
+                            {course.name.replace(/([A-Z])/g, " $1").trim()}
+                          </h3>
+                          <p className={`text-sm mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                            Start Learning →
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

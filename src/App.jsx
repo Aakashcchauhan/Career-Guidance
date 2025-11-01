@@ -9,6 +9,7 @@ import {
 import HomeLayout from "./components/Home/layout";
 import Home from "./pages/Home";
 import CourseRoadmap from "./pages/RoadMap";
+import Dashboard from "./pages/Dashboard";
 import Interview from "./pages/interview";
 import InterviewQuestion from "./pages/interviewQues";
 import Auth from "./components/Auth/Auth";
@@ -17,16 +18,19 @@ import Signup from "./pages/Auth/signup";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./context/ThemeContext";
+import { ProgressProvider } from "./context/ProgressContext";
 import NotAuthorized from "./components/NotAuthorized";
 function App() {
   return (
     <>
       <ThemeProvider>
-        <Router>
+        <ProgressProvider>
+          <Router>
           <Routes>
             <Route path="/" element={<HomeLayout />}>
               <Route path="/" element={<Home />} />
-              <Route path="/CourseRoadmap" element={<CourseRoadmap />} />
+              <Route path="/CourseRoadmap/:courseName?" element={<CourseRoadmap />} />
+              <Route path="/Dashboard" element={<Dashboard />} />
               <Route path="/Interview" element={<Interview />} />
               <Route
                 path="/interview-questions"
@@ -48,6 +52,7 @@ function App() {
           </Routes>
           <Footer />
         </Router>
+        </ProgressProvider>
       </ThemeProvider>
     </>
   );

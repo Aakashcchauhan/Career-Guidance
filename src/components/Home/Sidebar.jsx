@@ -6,6 +6,7 @@ export default function Sidebar({ darkMode, isOpen, toggleSidebar }) {
   const menuItems = [
     { name: "Hot Topics", path: "/" },
     { name: "Courses Roadmap", path: "/CourseRoadmap" },
+    { name: "Progress Dashboard", path: "/Dashboard" },
     { name: "Interview Question", path: "/Interview" },
   ];
   
