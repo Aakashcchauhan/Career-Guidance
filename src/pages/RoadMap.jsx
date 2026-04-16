@@ -17,6 +17,8 @@ export default function CourseRoadmap() {
   const [error, setError] = useState(null);
   const [youtubeVideos, setYoutubeVideos] = useState([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [courses, setCourses] = useState(() => {
     // Load courses from localStorage on mount
     const savedCourses = localStorage.getItem('roadmapCourses');
@@ -246,9 +248,10 @@ Return only the JSON with no explanations before or after.`;
     console.log("YouTube API Key:", YOUTUBE_API_KEY ? "Present" : "Missing");
     
     try {
-      const url = `${YOUTUBE_API_URL}?part=snippet&maxResults=6&q=${encodeURIComponent(
+      // Request more results to filter out shorts
+      const url = `${YOUTUBE_API_URL}?part=snippet,contentDetails&maxResults=15&q=${encodeURIComponent(
         searchQuery + " tutorial"
-      )}&type=video&key=${YOUTUBE_API_KEY}`;
+      )}&type=video&videoDuration=medium&key=${YOUTUBE_API_KEY}`;
       
       console.log("API URL:", url);
       
@@ -261,8 +264,17 @@ Return only the JSON with no explanations before or after.`;
         console.error("YouTube API Error:", data.error);
         setYoutubeVideos([]);
       } else if (data.items) {
-        console.log("Found videos:", data.items.length);
-        setYoutubeVideos(data.items);
+        // Filter out shorts (videos under 60 seconds and vertical format)
+        const filteredVideos = data.items.filter(video => {
+          const title = video.snippet.title.toLowerCase();
+          // Exclude videos with "shorts" in title or channel
+          return !title.includes('#shorts') && 
+                 !title.includes('#short') &&
+                 !video.snippet.channelTitle.toLowerCase().includes('shorts');
+        }).slice(0, 6); // Take only first 6 after filtering
+        
+        console.log("Found videos after filtering shorts:", filteredVideos.length);
+        setYoutubeVideos(filteredVideos);
       } else {
         console.log("No items in response");
         setYoutubeVideos([]);
@@ -634,28 +646,28 @@ Format your response in markdown using clear headings and bullet points for read
     html = html
       .replace(
         /^#### (.*)$/gm,
-        '<h4 class="text-base font-semibold mt-4 mb-2 text-gray-800 dark:text-gray-100">$1</h4>'
+        '<h4 class="text-base font-semibold mt-4 mb-2 text-black dark:text-gray-100">$1</h4>'
       )
       .replace(
         /^### (.*)$/gm,
-        '<h3 class="text-lg font-bold mt-5 mb-3 text-gray-900 dark:text-white">$1</h3>'
+        '<h3 class="text-lg font-bold mt-5 mb-3 text-black dark:text-white">$1</h3>'
       )
       .replace(
         /^## (.*)$/gm, 
-        '<h2 class="text-xl font-bold mt-6 mb-4 pb-2 text-gray-900 dark:text-white border-b-2 border-indigo-500/30">$1</h2>'
+        '<h2 class="text-xl font-bold mt-6 mb-4 pb-2 text-black dark:text-white border-b-2 border-indigo-500/30">$1</h2>'
       )
       .replace(
         /^# (.*)$/gm,
-        '<h1 class="text-2xl font-bold mt-6 mb-4 text-gray-900 dark:text-white">$1</h1>'
+        '<h1 class="text-2xl font-bold mt-6 mb-4 text-black dark:text-white">$1</h1>'
       );
 
     // Convert bold and italic with better contrast
     html = html
       .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-indigo-600 dark:text-indigo-400 italic">$1</strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>')
-      .replace(/__(.+?)__/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
-      .replace(/_(.+?)_/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>');
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-black dark:text-white">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em class="italic text-gray-600 dark:text-gray-300">$1</em>')
+      .replace(/__(.+?)__/g, '<strong class="font-semibold text-black dark:text-white">$1</strong>')
+      .replace(/_(.+?)_/g, '<em class="italic text-gray-600 dark:text-gray-300">$1</em>');
 
     // Convert code blocks
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, lang, code) {
@@ -672,10 +684,10 @@ Format your response in markdown using clear headings and bullet points for read
         .split(/\n(?=\d+\.)/)
         .map((line) => {
           const content = line.replace(/^\d+\.\s*/, "").trim();
-          return `<li class="mb-3 pl-2 text-gray-700 dark:text-gray-300">${content}</li>`;
+          return `<li class="mb-3 pl-2 text-gray-600 dark:text-gray-300">${content}</li>`;
         })
         .join("");
-      return `<ol class="list-decimal list-outside mb-6 ml-6 space-y-2 text-gray-700 dark:text-gray-300">${items}</ol>`;
+      return `<ol class="list-decimal list-outside mb-6 ml-6 space-y-2 text-gray-600 dark:text-gray-300">${items}</ol>`;
     });
 
     // Convert unordered lists with better spacing
@@ -685,14 +697,14 @@ Format your response in markdown using clear headings and bullet points for read
         .split(/\n(?=[-*]\s)/)
         .map((line) => {
           const content = line.replace(/^[-*]\s/, "").trim();
-          return `<li class="mb-3 pl-2 text-gray-700 dark:text-gray-300">${content}</li>`;
+          return `<li class="mb-3 pl-2 text-gray-600 dark:text-gray-300">${content}</li>`;
         })
         .join("");
-      return `<ul class="list-disc list-outside mb-6 ml-6 space-y-2 text-gray-700 dark:text-gray-300">${items}</ul>`;
+      return `<ul class="list-disc list-outside mb-6 ml-6 space-y-2 text-gray-600 dark:text-gray-300">${items}</ul>`;
     });
 
     // Convert blockquotes
-    html = html.replace(/^>\s*(.+)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-4 py-2 mb-4 italic text-gray-700 dark:text-gray-300 bg-indigo-50/50 dark:bg-indigo-900/20">$1</blockquote>');
+    html = html.replace(/^>\s*(.+)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-4 py-2 mb-4 italic text-gray-600 dark:text-gray-300 bg-indigo-50/50 dark:bg-indigo-900/20">$1</blockquote>');
 
     // Convert horizontal rules
     html = html.replace(/^---$/gm, '<hr class="my-6 border-gray-300 dark:border-gray-700" />');
@@ -703,7 +715,7 @@ Format your response in markdown using clear headings and bullet points for read
     // Convert paragraphs (lines not already in a block element)
     html = html.replace(
       /^(?!<[h|ul|ol|li|p|blockquote|pre|hr])(.+)$/gm,
-      '<p class="mb-4 leading-relaxed text-gray-700 dark:text-gray-300">$1</p>'
+      '<p class="mb-4 leading-relaxed text-gray-600 dark:text-gray-300">$1</p>'
     );
 
     return html;
@@ -1018,12 +1030,18 @@ Format your response in markdown using clear headings and bullet points for read
             ) : youtubeVideos.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {youtubeVideos.map((video) => (
-                  <a
+                  <button
+                    type="button"
                     key={video.id.videoId}
-                    href={`https://www.youtube.com/watch?v=${video.id.videoId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`group rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 ${
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log("Video clicked:", video.snippet.title);
+                      setSelectedVideo(video);
+                      setIsVideoModalOpen(true);
+                      console.log("Modal should open now");
+                    }}
+                    className={`group rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 text-left w-full ${
                       darkMode ? "bg-slate-700 hover:bg-slate-600" : "bg-white hover:shadow-xl border border-gray-200"
                     }`}
                   >
@@ -1058,7 +1076,7 @@ Format your response in markdown using clear headings and bullet points for read
                         {video.snippet.description}
                       </p>
                     </div>
-                  </a>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -1117,7 +1135,7 @@ Format your response in markdown using clear headings and bullet points for read
               <div className={`h-4 rounded ${darkMode ? "bg-slate-700" : "bg-gray-200"} w-11/12`}></div>
             </div>
           ) : aiEnhancedContent ? (
-            <div className={`prose prose-sm md:prose-base max-w-none ${darkMode ? "prose-invert" : ""}`}>
+            <div className="max-w-none">
               <div
                 className="markdown-content"
                 dangerouslySetInnerHTML={{
@@ -1142,6 +1160,90 @@ Format your response in markdown using clear headings and bullet points for read
           )}
         </div>
       </div>
+
+      {/* YouTube Video Modal */}
+      {isVideoModalOpen && selectedVideo && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75"
+          onClick={() => {
+            setIsVideoModalOpen(false);
+            setSelectedVideo(null);
+          }}
+        >
+          <div 
+            className={`relative w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden ${
+              darkMode ? "bg-slate-800" : "bg-white"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className={`flex items-center justify-between p-4 border-b ${
+              darkMode ? "border-slate-700" : "border-gray-200"
+            }`}>
+              <div className="flex-1 mr-4">
+                <h3 className={`font-semibold text-lg line-clamp-1 ${
+                  darkMode ? "text-white" : "text-gray-900"
+                }`}>
+                  {selectedVideo.snippet.title}
+                </h3>
+                <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  {selectedVideo.snippet.channelTitle}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsVideoModalOpen(false);
+                  setSelectedVideo(null);
+                }}
+                className={`p-2 rounded-lg transition-colors ${
+                  darkMode 
+                    ? "hover:bg-slate-700 text-gray-400 hover:text-white" 
+                    : "hover:bg-gray-100 text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Video Player */}
+            <div className="relative pt-[56.25%]">
+              <iframe
+                className="absolute inset-0 w-full h-full"
+                src={`https://www.youtube.com/embed/${selectedVideo.id.videoId}?autoplay=1`}
+                title={selectedVideo.snippet.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+
+            {/* Video Description */}
+            <div className={`p-4 max-h-32 overflow-y-auto ${
+              darkMode ? "bg-slate-900" : "bg-gray-50"
+            }`}>
+              <p className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-700"}`}>
+                {selectedVideo.snippet.description || "No description available."}
+              </p>
+            </div>
+
+            {/* Watch on YouTube Button */}
+            <div className={`p-4 border-t ${darkMode ? "border-slate-700" : "border-gray-200"}`}>
+              <a
+                href={`https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+                Watch on YouTube
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

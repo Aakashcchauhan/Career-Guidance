@@ -37,10 +37,10 @@ export default function Sidebar({ darkMode, isOpen, toggleSidebar }) {
           </nav>
         </div>
         
-        {/* Toggle button on sidebar */}
+        {/* Toggle button on sidebar - Hidden on mobile */}
         <button
           onClick={toggleSidebar}
-          className={`absolute top-1/2 -mt-12 ${
+          className={`hidden md:block absolute top-1/2 -mt-12 ${
             isOpen ? "right-0 translate-x-1/2" : "right-0 translate-x-full"
           } bg-blue-600 text-white rounded-full p-1 shadow-lg`}
         >
