@@ -7,4 +7,15 @@ export default defineConfig({
   plugins:  [
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          firebase: ['firebase/app', 'firebase/auth'],
+          icons: ['lucide-react', 'react-icons'],
+        },
+      },
+    },
+  },
 })
