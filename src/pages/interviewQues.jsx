@@ -14,10 +14,9 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ThemeContext } from '../context/ThemeContext'; // Import the ThemeContext
 
-const GEMINI_API_KEY = import.meta.env.GEMINI_API_KEY;
-const MODEL_ID = "gemini-pro";
-const GENERATE_CONTENT_API = "generateContent";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+const OPENAI_API_KEY = import.meta.env.OPENAI_API_KEY || import.meta.env.GEMINI_API_KEY;
+const OPENAI_MODEL = "gpt-4o-mini";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 export default function CategoryDetailPage() {
   const location = useLocation();
@@ -75,23 +74,26 @@ Return ONLY a VALID JSON object with this exact format, properly escaped:
   "solution": "// Detailed solution with complete code and explanation\\n\\nfunction solution() {\\n  // Your code here\\n}"
 }`;
 
-      const response = await fetch(GEMINI_URL, {
+      const response = await fetch(OPENAI_URL, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: promptText
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.4,
-            topK: 32,
-            topP: 0.95,
-            maxOutputTokens: 8192,
-          }
+          model: OPENAI_MODEL,
+          messages: [
+            {
+              role: "system",
+              content: "You generate strictly valid JSON responses without markdown wrappers."
+            },
+            {
+              role: "user",
+              content: promptText
+            }
+          ],
+          temperature: 0.4,
+          max_tokens: 1400
         })
       });
 
@@ -104,13 +106,13 @@ Return ONLY a VALID JSON object with this exact format, properly escaped:
         throw new Error(`API Error: ${response.status}`);
       }
       
-      if (!responseData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      if (!responseData?.choices?.[0]?.message?.content) {
         console.error("Invalid API response format:", responseData);
         throw new Error("Invalid API response format");
       }
 
       // Get the raw text response
-      let responseText = responseData.candidates[0].content.parts[0].text;
+      let responseText = responseData.choices[0].message.content;
       console.log("Raw response text:", responseText);
       
       // Remove any markdown formatting

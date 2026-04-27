@@ -32,10 +32,9 @@ export default function CourseRoadmap() {
     return savedAvailableCourses ? JSON.parse(savedAvailableCourses) : [];
   });
   
-  const GEMINI_API_KEY = import.meta.env.GEMINI_API_KEY; 
-  const MODEL_ID = "gemini-2.0-flash";
-  const GENERATE_CONTENT_API = "generateContent";
-  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+  const OPENAI_API_KEY = import.meta.env.OPENAI_API_KEY || import.meta.env.GEMINI_API_KEY;
+  const OPENAI_MODEL = "gpt-4o-mini";
+  const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
   
   // YouTube API configuration
   const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
@@ -188,28 +187,33 @@ For prerequisites, use the IDs of modules that must be completed before taking t
 Make sure the structure exactly matches the provided format as it will be parsed programmatically.
 Return only the JSON with no explanations before or after.`;
 
-      const response = await fetch(GEMINI_URL, {
+      const response = await fetch(OPENAI_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          contents: [
+          model: OPENAI_MODEL,
+          messages: [
             {
-              parts: [{ text: prompt }],
+              role: "system",
+              content: "You are a helpful assistant. Return valid JSON only when asked for JSON.",
             },
+            {
+              role: "user",
+              content: prompt,
+            }
           ],
-          generationConfig: {
-            temperature: 1,
-            maxOutputTokens: 2048,
-          },
+          temperature: 1,
+          max_tokens: 1800,
         }),
       });
 
       const data = await response.json();
 
-      if (data.candidates && data.candidates.length > 0) {
-        const aiMessage = data.candidates[0].content.parts[0].text;
+      if (data.choices && data.choices.length > 0) {
+        const aiMessage = data.choices[0].message.content;
         // Extract JSON from the response (in case there's any extra text)
         const jsonMatch = aiMessage.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -232,7 +236,7 @@ Return only the JSON with no explanations before or after.`;
       } else if (data.error) {
         setError(data.error.message || "Unknown error occurred");
       } else {
-        setError("No response from Gemini API");
+        setError("No response from OpenAI API");
       }
     } catch (error) {
       setError(error.message || "Failed to generate course data");
@@ -338,36 +342,41 @@ Return only the JSON with no explanations before or after.`;
     try {
       const prompt = generatePrompt(module, courseType, topic);
 
-      const response = await fetch(GEMINI_URL, {
+      const response = await fetch(OPENAI_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          contents: [
+          model: OPENAI_MODEL,
+          messages: [
             {
-              parts: [{ text: prompt }],
+              role: "system",
+              content: "You are a helpful career guidance assistant and format content in markdown.",
             },
+            {
+              role: "user",
+              content: prompt,
+            }
           ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
+          temperature: 0.7,
+          max_tokens: 1800,
         }),
       });
 
       const data = await response.json();
 
-      if (data.candidates && data.candidates.length > 0) {
-        const aiMessage = data.candidates[0].content.parts[0].text;
+      if (data.choices && data.choices.length > 0) {
+        const aiMessage = data.choices[0].message.content;
         setAiEnhancedContent(aiMessage);
       } else if (data.error) {
         setError(data.error.message || "Unknown error occurred");
       } else {
-        setError("No response from Gemini API");
+        setError("No response from OpenAI API");
       }
     } catch (error) {
-      setError(error.message || "Failed to connect to Gemini API");
+      setError(error.message || "Failed to connect to OpenAI API");
     } finally {
       setIsLoadingAI(false);
     }
