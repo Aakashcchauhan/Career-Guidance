@@ -32,7 +32,7 @@ export default function CourseRoadmap() {
     return savedAvailableCourses ? JSON.parse(savedAvailableCourses) : [];
   });
   
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; 
+  const GEMINI_API_KEY = import.meta.env.GEMINI_API_KEY; 
   const MODEL_ID = "gemini-2.0-flash";
   const GENERATE_CONTENT_API = "generateContent";
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;

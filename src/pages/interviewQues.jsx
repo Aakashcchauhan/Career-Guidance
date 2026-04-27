@@ -14,7 +14,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ThemeContext } from '../context/ThemeContext'; // Import the ThemeContext
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = import.meta.env.GEMINI_API_KEY;
 const MODEL_ID = "gemini-pro";
 const GENERATE_CONTENT_API = "generateContent";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${MODEL_ID}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
